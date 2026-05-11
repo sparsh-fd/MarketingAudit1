@@ -83,15 +83,31 @@ EMPTY_CRAWL = {
 }
 
 
-def _extract_social_urls(text: str) -> dict:
+def _find_social_links_from_items(items: list) -> list:
+    found = []
+    social_domains = [
+        "instagram.com", "facebook.com", "tiktok.com",
+        "twitter.com", "x.com", "linkedin.com", "youtube.com"
+    ]
+    for item in items:
+        for link in item.get("links", []) or []:
+            href = link.get("href", "") or ""
+            for domain in social_domains:
+                if domain in href and href not in found:
+                    found.append(href)
+    return found
+
+
+def _extract_social_urls(body_text: str, social_links: list) -> dict:
     urls = {}
+    all_text = body_text + " " + " ".join(social_links)
     patterns = {
         "instagram": r"https?://(?:www\.)?instagram\.com/[^\s\"'<>]+",
         "facebook": r"https?://(?:www\.)?facebook\.com/[^\s\"'<>]+",
         "tiktok": r"https?://(?:www\.)?tiktok\.com/@[^\s\"'<>]+",
     }
     for platform, pattern in patterns.items():
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(pattern, all_text, re.IGNORECASE)
         if match:
             urls[platform] = match.group(0).rstrip("/")
     return urls
@@ -118,6 +134,7 @@ async def crawl_website(url: str) -> dict:
             for item in items
         )[:8000]
         first = items[0] if items else {}
+        social_links = _find_social_links_from_items(items)
         return {
             "url": url,
             "body_text": combined_text,
@@ -125,7 +142,7 @@ async def crawl_website(url: str) -> dict:
             "has_ssl": url.startswith("https"),
             "title": first.get("title", ""),
             "meta_description": first.get("metadata", {}).get("description", ""),
-            "social_links": [],
+            "social_links": social_links,
             "has_blog": "blog" in combined_text.lower(),
             "has_email_signup": "subscribe" in combined_text.lower() or "newsletter" in combined_text.lower(),
             "has_testimonials": "testimonial" in combined_text.lower() or "review" in combined_text.lower(),
@@ -199,7 +216,10 @@ async def crawl_social_media(social_urls: dict) -> dict:
 
 async def crawl_all(url: str) -> dict:
     website_data = await crawl_website(url)
-    social_urls = _extract_social_urls(website_data.get("body_text", ""))
+    social_urls = _extract_social_urls(
+        website_data.get("body_text", ""),
+        website_data.get("social_links", [])
+    )
     print(f"Social URLs found: {social_urls}")
     social_data = await crawl_social_media(social_urls)
     return {**website_data, "social": social_data}

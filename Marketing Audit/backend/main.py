@@ -270,10 +270,12 @@ Return the complete audit JSON."""
 
 
 def _extract_json(text: str) -> dict:
+    from json_repair import repair_json
     json_match = re.search(r"\{[\s\S]*\}", text)
     if not json_match:
         raise ValueError("AI response did not contain valid JSON")
-    return json.loads(json_match.group(0))
+    repaired = repair_json(json_match.group(0))
+    return json.loads(repaired)
 
 
 async def _run_claude_audit(user_prompt: str) -> dict:

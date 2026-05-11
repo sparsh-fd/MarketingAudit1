@@ -286,7 +286,7 @@ async def _run_claude_audit(user_prompt: str) -> dict:
                 "anthropic-version": "2023-06-01",
             },
             json={
-                "model": "claude-sonnet-4-5",
+                "model": "claude-sonnet-4-6",
                 "max_tokens": 8192,
                 "system": AUDIT_SYSTEM_PROMPT,
                 "messages": [{"role": "user", "content": user_prompt}],

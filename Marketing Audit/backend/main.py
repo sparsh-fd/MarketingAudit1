@@ -20,6 +20,7 @@ import httpx
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
+
 APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -93,7 +94,7 @@ async def crawl_website(url: str) -> dict:
             "maxCrawlPages": 15,
             "crawlerType": "cheerio",
         }
-        run = await asyncio.get_event_loop().run_in_executor(
+        run = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: client.actor("apify/website-content-crawler").call(run_input=run_input)
         )
@@ -227,8 +228,8 @@ def _extract_json(text: str) -> dict:
 
 async def _run_claude_audit(user_prompt: str) -> dict:
     import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    message = client.messages.create(
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    message = await client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=8192,
         system=AUDIT_SYSTEM_PROMPT,

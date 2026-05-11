@@ -156,6 +156,42 @@ async def crawl_website(url: str) -> dict:
         return {"url": url, **EMPTY_CRAWL}
 
 
+async def find_social_urls_via_search(business_name: str) -> dict:
+    if not APIFY_API_TOKEN:
+        return {}
+    from apify_client import ApifyClient
+    client = ApifyClient(APIFY_API_TOKEN)
+    loop = asyncio.get_running_loop()
+    urls = {}
+    platforms = {
+        "instagram": f'"{business_name}" site:instagram.com',
+        "facebook": f'"{business_name}" site:facebook.com',
+        "tiktok": f'"{business_name}" site:tiktok.com',
+    }
+    for platform, query in platforms.items():
+        try:
+            run = await loop.run_in_executor(None, lambda q=query: client.actor("apify/google-search-scraper").call(
+                run_input={"queries": q, "maxPagesPerQuery": 1, "resultsPerPage": 3}
+            ))
+            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            domain_map = {
+                "instagram": "instagram.com",
+                "facebook": "facebook.com",
+                "tiktok": "tiktok.com",
+            }
+            for item in items:
+                for result in item.get("organicResults", []):
+                    link = result.get("url", "")
+                    if domain_map[platform] in link:
+                        urls[platform] = link
+                        break
+            if platform in urls:
+                print(f"Found {platform} via Google: {urls[platform]}")
+        except Exception as e:
+            print(f"Google search for {platform} failed: {e}")
+    return urls
+
+
 async def crawl_social_media(social_urls: dict) -> dict:
     if not APIFY_API_TOKEN or not social_urls:
         return {}
@@ -214,13 +250,19 @@ async def crawl_social_media(social_urls: dict) -> dict:
     return result
 
 
-async def crawl_all(url: str) -> dict:
+async def crawl_all(url: str, business_name: str = "") -> dict:
     website_data = await crawl_website(url)
-    social_urls = _extract_social_urls(
+
+    html_social_urls = _extract_social_urls(
         website_data.get("body_text", ""),
         website_data.get("social_links", [])
     )
+
+    google_social_urls = await find_social_urls_via_search(business_name) if business_name else {}
+
+    social_urls = {**html_social_urls, **google_social_urls}
     print(f"Social URLs found: {social_urls}")
+
     social_data = await crawl_social_media(social_urls)
     return {**website_data, "social": social_data}
 
@@ -403,7 +445,7 @@ async def create_audit(req: AuditRequest):
         "submitted_at": now,
     })
 
-    crawl_data = await crawl_all(url)
+    crawl_data = await crawl_all(url, business_name=req.business_name)
     audit_data = await run_audit(req.business_name, url, crawl_data)
 
     audit_data.setdefault("business_name", req.business_name)

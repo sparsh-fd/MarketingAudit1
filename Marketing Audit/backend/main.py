@@ -1,6 +1,4 @@
 """
-import asyncio
-
 GoToRetreats Marketing Audit — Backend API
 
 Single endpoint: POST /api/audit
@@ -10,6 +8,7 @@ Returns: PDF file download
 Flow: collect lead → crawl site → Claude API analysis → generate PDF → return file
 """
 
+import asyncio
 import json
 import os
 import re
@@ -18,7 +17,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
@@ -66,9 +64,27 @@ async def log_to_google_sheet(data: dict):
     except Exception:
         pass
 
+
+EMPTY_CRAWL = {
+    "body_text": "",
+    "pages_crawled": 0,
+    "has_ssl": False,
+    "title": "",
+    "meta_description": "",
+    "social_links": [],
+    "has_blog": False,
+    "has_email_signup": False,
+    "has_testimonials": False,
+    "has_booking": False,
+    "has_pricing": False,
+    "has_faq": False,
+    "has_video": False,
+}
+
+
 async def crawl_website(url: str) -> dict:
     if not APIFY_API_TOKEN:
-        return await crawl_website_basic(url)
+        return {"url": url, **EMPTY_CRAWL}
     try:
         from apify_client import ApifyClient
         client = ApifyClient(APIFY_API_TOKEN)
@@ -104,10 +120,8 @@ async def crawl_website(url: str) -> dict:
             "has_video": "video" in combined_text.lower() or "youtube" in combined_text.lower(),
         }
     except Exception as e:
-        print(f"Apify crawl failed: {e}, falling back to basic crawl")
-        return await crawl_website_basic(url)
-
-    return result
+        print(f"Apify crawl failed: {e}, returning empty crawl")
+        return {"url": url, **EMPTY_CRAWL}
 
 
 AUDIT_SYSTEM_PROMPT = """You are a retreat and wellness marketing audit expert working for GoToRetreats.
@@ -261,7 +275,7 @@ async def run_audit(business_name: str, url: str, crawl_data: dict) -> dict:
         providers.append(("OpenAI", _run_openai_audit))
 
     if not providers:
-        raise HTTPException(status_code=500, detail="No AI API keys configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.")
+        raise HTTPException(status_code=500, detail="No AI API keys configured.")
 
     last_error = None
     for name, fn in providers:
@@ -280,7 +294,6 @@ async def create_audit(req: AuditRequest):
     url = normalize_url(req.website_url)
     now = datetime.now(timezone.utc).isoformat()
 
-    # 1. Log to Google Sheet (fire and forget)
     await log_to_google_sheet({
         "business_name": req.business_name,
         "website_url": url,
@@ -288,18 +301,13 @@ async def create_audit(req: AuditRequest):
         "submitted_at": now,
     })
 
-    # 2. Crawl the website
     crawl_data = await crawl_website(url)
-
-    # 3. Run AI audit (tries Claude first, falls back to OpenAI)
     audit_data = await run_audit(req.business_name, url, crawl_data)
 
-    # Ensure required fields
     audit_data.setdefault("business_name", req.business_name)
     audit_data.setdefault("website_url", url)
     audit_data.setdefault("audit_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
-    # 4. Generate PDF
     slug = re.sub(r"[^a-z0-9]+", "_", req.business_name.lower().strip()).strip("_")
     tmp_dir = tempfile.mkdtemp()
     pdf_path = os.path.join(tmp_dir, f"marketing_audit_{slug}.pdf")
@@ -310,7 +318,6 @@ async def create_audit(req: AuditRequest):
 
     build_pdf(audit_data, pdf_path)
 
-    # 5. Return PDF
     return FileResponse(
         pdf_path,
         media_type="application/pdf",

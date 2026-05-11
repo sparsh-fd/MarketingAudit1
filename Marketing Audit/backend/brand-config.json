@@ -1,0 +1,47 @@
+{
+  "brand_name": "GoToRetreats",
+  "tagline": "Marketing Intelligence Report",
+  "website": "https://www.gotoretreats.com",
+  "description": "GoToRetreats.com - The Go-To platform for Retreats™",
+  "colors": {
+    "primary": "#009E9B",
+    "primary_light": "#00D1CE",
+    "accent": "#00D1CE",
+    "secondary": "#B8BFD1",
+    "background": "#FAFAFA",
+    "text_dark": "#4A4A4F",
+    "text_primary": "#009E9B",
+    "link": "#00D1CE",
+    "button_primary_bg": "#009E9B",
+    "button_primary_text": "#FFFFFF",
+    "button_primary_border": "#006B69",
+    "button_secondary_bg": "#E5E5E6",
+    "button_secondary_text": "#4A4A4F",
+    "input_bg": "#FFFFFF",
+    "input_text": "#313135",
+    "score_strong": "#16A34A",
+    "score_moderate": "#D97706",
+    "score_weak": "#EA580C",
+    "score_critical": "#DC2626"
+  },
+  "typography": {
+    "font_heading": "Helvetica-Bold",
+    "font_body": "Helvetica",
+    "font_family_web": "Inter",
+    "font_sizes": {
+      "h1": "48px",
+      "h2": "32px",
+      "body": "14px"
+    }
+  },
+  "design": {
+    "color_scheme": "light",
+    "border_radius": "4px",
+    "tone": "modern",
+    "energy": "medium"
+  },
+  "images": {
+    "favicon_url": "https://sharetribe-assets.imgix.net/65e4dcf0-f2f7-4c09-9fda-2a07a5dd2d3c/raw/ab/6a16cb29b7be5adae813fc2972b4c0eb64acba?auto=format&crop=edges&fit=crop&h=16&w=16&s=70e8c1a5d231dd19c1d422bb1deaf631",
+    "og_image_url": "https://sharetribe-assets.imgix.net/65e4dcf0-f2f7-4c09-9fda-2a07a5dd2d3c/raw/0b/0861a3e13d588cea2dae090a6c43a477d5e9dd?auto=format&fit=clip&h=1200&w=1200&s=a4bd6ac91eaeab8256100f53446d7d75"
+  }
+}

@@ -277,29 +277,15 @@ def _extract_json(text: str) -> dict:
 
 
 async def _run_claude_audit(user_prompt: str) -> dict:
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-            },
-            json={
-                "model": "claude-sonnet-4-6",
-                "max_tokens": 8192,
-                "system": AUDIT_SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": user_prompt}],
-            },
-        )
-
-    if resp.status_code != 200:
-        err = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-        msg = err.get("error", {}).get("message", f"Claude API error: {resp.status_code}")
-        raise RuntimeError(msg)
-
-    result = resp.json()
-    text = result.get("content", [{}])[0].get("text", "")
+    import anthropic
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    message = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=8192,
+        system=AUDIT_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_prompt}]
+    )
+    text = message.content[0].text
     return _extract_json(text)
 
 

@@ -36,7 +36,7 @@ in that step and continue — never stop the audit because one crawl failed.
 If the user provides only a URL, extract the business name from the website after crawling.
 Only ask the user for information that cannot be discovered through crawling or search.
 
-**Auto-discover** (do not ask the user):
+**Auto-discover** (do not ask the user can use apify for search):
 - Social media profile URLs
 - Retreat type / niche (yoga, wellness, meditation, etc.)
 - Target audience

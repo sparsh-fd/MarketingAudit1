@@ -83,6 +83,20 @@ EMPTY_CRAWL = {
 }
 
 
+def _extract_social_urls(text: str) -> dict:
+    urls = {}
+    patterns = {
+        "instagram": r"https?://(?:www\.)?instagram\.com/[^\s\"'<>]+",
+        "facebook": r"https?://(?:www\.)?facebook\.com/[^\s\"'<>]+",
+        "tiktok": r"https?://(?:www\.)?tiktok\.com/@[^\s\"'<>]+",
+    }
+    for platform, pattern in patterns.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            urls[platform] = match.group(0).rstrip("/")
+    return urls
+
+
 async def crawl_website(url: str) -> dict:
     if not APIFY_API_TOKEN:
         return {"url": url, **EMPTY_CRAWL}
@@ -123,6 +137,72 @@ async def crawl_website(url: str) -> dict:
     except Exception as e:
         print(f"Apify crawl failed: {e}, returning empty crawl")
         return {"url": url, **EMPTY_CRAWL}
+
+
+async def crawl_social_media(social_urls: dict) -> dict:
+    if not APIFY_API_TOKEN or not social_urls:
+        return {}
+    from apify_client import ApifyClient
+    client = ApifyClient(APIFY_API_TOKEN)
+    loop = asyncio.get_running_loop()
+    result = {}
+
+    if "instagram" in social_urls:
+        try:
+            run = await loop.run_in_executor(None, lambda: client.actor("apify/instagram-scraper").call(
+                run_input={"directUrls": [social_urls["instagram"]], "resultsType": "posts", "resultsLimit": 12}
+            ))
+            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            result["instagram"] = {
+                "url": social_urls["instagram"],
+                "posts_scraped": len(items),
+                "avg_likes": int(sum(i.get("likesCount", 0) for i in items) / max(len(items), 1)),
+                "avg_comments": int(sum(i.get("commentsCount", 0) for i in items) / max(len(items), 1)),
+            }
+            print(f"Instagram crawl: {len(items)} posts found")
+        except Exception as e:
+            print(f"Instagram crawl failed: {e}")
+
+    if "facebook" in social_urls:
+        try:
+            run = await loop.run_in_executor(None, lambda: client.actor("apify/facebook-posts-scraper").call(
+                run_input={"startUrls": [{"url": social_urls["facebook"]}], "maxPosts": 10}
+            ))
+            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            result["facebook"] = {
+                "url": social_urls["facebook"],
+                "posts_scraped": len(items),
+                "avg_likes": int(sum(i.get("likes", 0) for i in items) / max(len(items), 1)),
+            }
+            print(f"Facebook crawl: {len(items)} posts found")
+        except Exception as e:
+            print(f"Facebook crawl failed: {e}")
+
+    if "tiktok" in social_urls:
+        try:
+            handle = social_urls["tiktok"].split("@")[-1].split("/")[0]
+            run = await loop.run_in_executor(None, lambda: client.actor("clockworks/tiktok-scraper").call(
+                run_input={"profiles": [handle], "resultsPerPage": 10}
+            ))
+            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            result["tiktok"] = {
+                "url": social_urls["tiktok"],
+                "videos_scraped": len(items),
+                "avg_views": int(sum(i.get("playCount", 0) for i in items) / max(len(items), 1)),
+            }
+            print(f"TikTok crawl: {len(items)} videos found")
+        except Exception as e:
+            print(f"TikTok crawl failed: {e}")
+
+    return result
+
+
+async def crawl_all(url: str) -> dict:
+    website_data = await crawl_website(url)
+    social_urls = _extract_social_urls(website_data.get("body_text", ""))
+    print(f"Social URLs found: {social_urls}")
+    social_data = await crawl_social_media(social_urls)
+    return {**website_data, "social": social_data}
 
 
 AUDIT_SYSTEM_PROMPT = """You are a retreat and wellness marketing audit expert working for GoToRetreats.
@@ -200,6 +280,7 @@ Scoring rubric:
 Overall: Strong=8+ Strong no Critical, Moderate=5-7 Strong max 1 Critical, Weak=<5 Strong or 3+ Weak/Critical, Critical=6+ Weak/Critical
 
 Include minimum 15 gaps and 12-18 recommendations. Every finding must cite evidence from the crawl data.
+When social media data is available in the crawl, use it to score Branding Consistency and Content & Storytelling.
 Return ONLY the JSON."""
 
 
@@ -210,7 +291,7 @@ def _build_user_prompt(business_name: str, url: str, crawl_data: dict) -> str:
 Business: {business_name}
 Website: {url}
 
-Here is the crawled website data:
+Here is the crawled website and social media data:
 {crawl_summary}
 
 Analyze across all 12 categories. Base your findings on the actual crawl data provided.
@@ -302,7 +383,7 @@ async def create_audit(req: AuditRequest):
         "submitted_at": now,
     })
 
-    crawl_data = await crawl_website(url)
+    crawl_data = await crawl_all(url)
     audit_data = await run_audit(req.business_name, url, crawl_data)
 
     audit_data.setdefault("business_name", req.business_name)

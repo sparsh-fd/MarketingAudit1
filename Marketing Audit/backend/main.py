@@ -1,4 +1,6 @@
 """
+import asyncio
+
 GoToRetreats Marketing Audit — Backend API
 
 Single endpoint: POST /api/audit
@@ -20,7 +22,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
-
+APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL", "")
@@ -64,115 +66,46 @@ async def log_to_google_sheet(data: dict):
     except Exception:
         pass
 
-
 async def crawl_website(url: str) -> dict:
-    result = {
-        "url": url,
-        "title": "",
-        "meta_description": "",
-        "headings": [],
-        "cta_texts": [],
-        "has_ssl": url.startswith("https"),
-        "social_links": [],
-        "has_blog": False,
-        "has_email_signup": False,
-        "has_testimonials": False,
-        "has_booking": False,
-        "has_pricing": False,
-        "has_faq": False,
-        "has_video": False,
-        "images_count": 0,
-        "scripts_count": 0,
-        "body_text": "",
-        "nav_items": [],
-        "page_links": [],
-    }
-
+    if not APIFY_API_TOKEN:
+        return await crawl_website_basic(url)
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
-            resp = await client.get(url, headers={"User-Agent": "GoToRetreats-Audit-Bot/1.0"})
-            html = resp.text
+        from apify_client import ApifyClient
+        client = ApifyClient(APIFY_API_TOKEN)
+        run_input = {
+            "startUrls": [{"url": url}],
+            "maxCrawlPages": 15,
+            "crawlerType": "cheerio",
+        }
+        run = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.actor("apify/website-content-crawler").call(run_input=run_input)
+        )
+        items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+        combined_text = " ".join(
+            item.get("text", "") or item.get("markdown", "")
+            for item in items
+        )[:8000]
+        first = items[0] if items else {}
+        return {
+            "url": url,
+            "body_text": combined_text,
+            "pages_crawled": len(items),
+            "has_ssl": url.startswith("https"),
+            "title": first.get("title", ""),
+            "meta_description": first.get("metadata", {}).get("description", ""),
+            "social_links": [],
+            "has_blog": "blog" in combined_text.lower(),
+            "has_email_signup": "subscribe" in combined_text.lower() or "newsletter" in combined_text.lower(),
+            "has_testimonials": "testimonial" in combined_text.lower() or "review" in combined_text.lower(),
+            "has_booking": "book" in combined_text.lower() or "reserve" in combined_text.lower(),
+            "has_pricing": "price" in combined_text.lower() or "from $" in combined_text.lower(),
+            "has_faq": "faq" in combined_text.lower(),
+            "has_video": "video" in combined_text.lower() or "youtube" in combined_text.lower(),
+        }
     except Exception as e:
-        result["error"] = str(e)
-        return result
-
-    soup = BeautifulSoup(html, "html.parser")
-
-    title_tag = soup.find("title")
-    if title_tag:
-        result["title"] = title_tag.get_text(strip=True)
-
-    meta_desc = soup.find("meta", attrs={"name": "description"})
-    if meta_desc:
-        result["meta_description"] = meta_desc.get("content", "")
-
-    for level in ["h1", "h2", "h3"]:
-        for tag in soup.find_all(level, limit=10):
-            result["headings"].append({"level": level, "text": tag.get_text(strip=True)})
-
-    for a in soup.find_all("a", limit=100):
-        href = (a.get("href") or "").lower()
-        text = a.get_text(strip=True).lower()
-
-        for platform in ["instagram", "facebook", "twitter", "linkedin", "tiktok", "youtube"]:
-            if platform in href:
-                result["social_links"].append({"platform": platform, "url": a.get("href")})
-
-        if any(w in text for w in ["book", "reserve", "sign up", "get started", "join", "apply"]):
-            result["cta_texts"].append(a.get_text(strip=True))
-
-        if any(w in href for w in ["/blog", "/articles", "/resources", "/journal", "/news"]):
-            result["has_blog"] = True
-
-        result["page_links"].append({"text": a.get_text(strip=True)[:60], "href": href[:200]})
-
-    nav = soup.find("nav")
-    if nav:
-        for li in nav.find_all(["a", "li"], limit=15):
-            t = li.get_text(strip=True)
-            if t and len(t) < 40:
-                result["nav_items"].append(t)
-
-    body_text = soup.get_text(separator=" ", strip=True).lower()
-    result["body_text"] = body_text[:5000]
-
-    result["has_email_signup"] = bool(
-        soup.find("input", {"type": "email"})
-        or "newsletter" in body_text
-        or "subscribe" in body_text
-    )
-    result["has_testimonials"] = any(
-        w in body_text for w in ["testimonial", "review", "what our", "guest stories", "★", "⭐"]
-    )
-    result["has_booking"] = any(
-        w in body_text for w in ["book now", "reserve", "booking", "check availability", "schedule"]
-    )
-    result["has_pricing"] = any(
-        w in body_text for w in ["pricing", "price", "from $", "per person", "per night", "starts at"]
-    )
-    result["has_faq"] = any(
-        w in body_text for w in ["faq", "frequently asked", "common questions"]
-    )
-    result["has_video"] = bool(
-        soup.find("video") or soup.find("iframe", src=re.compile(r"youtube|vimeo", re.I))
-    )
-    result["images_count"] = len(soup.find_all("img"))
-    result["scripts_count"] = len(soup.find_all("script"))
-
-    for meta in soup.find_all("meta"):
-        if meta.get("property", "").startswith("og:") or meta.get("name") in ["robots", "viewport"]:
-            pass
-
-    schema_scripts = soup.find_all("script", {"type": "application/ld+json"})
-    result["has_schema"] = len(schema_scripts) > 0
-    result["schema_types"] = []
-    for s in schema_scripts:
-        try:
-            sd = json.loads(s.string)
-            if isinstance(sd, dict) and "@type" in sd:
-                result["schema_types"].append(sd["@type"])
-        except Exception:
-            pass
+        print(f"Apify crawl failed: {e}, falling back to basic crawl")
+        return await crawl_website_basic(url)
 
     return result
 

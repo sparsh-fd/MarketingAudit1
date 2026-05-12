@@ -341,7 +341,7 @@ Scoring rubric:
 
 Overall: Strong=8+ Strong no Critical, Moderate=5-7 Strong max 1 Critical, Weak=<5 Strong or 3+ Weak/Critical, Critical=6+ Weak/Critical
 
-Include minimum 15 gaps and 12-18 recommendations. Every finding must cite evidence from the crawl data.
+Include exactly 10 gaps and 12 recommendations. Use simple plain English — no jargon, no technical terms. Write as if explaining to a business owner who is not tech-savvy. Every finding must cite evidence from the crawl data.
 When social media data is available in the crawl, use it to score Branding Consistency and Content & Storytelling.
 Return ONLY the JSON."""
 

@@ -513,7 +513,7 @@ def build_gap_analysis(data: dict, client_name: str = "") -> list:
     ]
 
     rows = [header]
-    for item in gaps:
+    for item in gaps[:10]:
         ic = impact_color(item.get("impact", ""))
         impact_html = (
             f'<font face="{FONT_H}" color="{ic}">'
@@ -637,7 +637,7 @@ def build_recommendations(data: dict, client_name: str = "") -> list:
     ]
 
     rows = [header]
-    for idx, rec in enumerate(recs, 1):
+    for idx, rec in enumerate(recs[:10], 1):
         rows.append([
             Paragraph(str(idx), STYLES["table_cell_center"]),
             Paragraph(safe(rec.get("channel", "")), STYLES["table_cell"]),
@@ -710,8 +710,6 @@ def build_pdf(data: dict, output_path: str):
     elements.extend(build_executive_summary(data, client_name))
     elements.append(Spacer(1, 10))
     elements.extend(build_channel_scores(data, client_name))
-    elements.append(Spacer(1, 10))
-    elements.extend(build_narrative(data, client_name))
     elements.append(Spacer(1, 10))
     elements.extend(build_gap_analysis(data, client_name))
     elements.append(Spacer(1, 10))
